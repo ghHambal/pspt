@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF Statement Parser — Tailwind + Unique Dropdown Filters</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+  <!-- Day.js -->
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+
+  <!-- pdf.js -->
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window['pdfjsLib']) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      }
+    });
+  </script>
+
+  <style>
+    :root{ --pink:#c2185b; --ink:#1f2937; --muted:#64748b; --line:#e5e7eb; --header-h:72px; --subnav-h:48px }
+    body{ padding-top: var(--header-h) }
+    .sticky-sub{ position: sticky; top: var(--header-h); z-index: 30 }
+    .sticky-table-sub{ position: sticky; top: calc(var(--header-h) + var(--subnav-h)); z-index: 30 }
+    .shadow-card{ box-shadow: 0 8px 30px rgba(0,0,0,.06) }
+    .chip{ background:#f8fafc; border:1px solid var(--line); border-radius:9999px; padding:.15rem .6rem; display:inline-block; margin:.15rem }
+    .scroll-x{ overflow-x:auto }
+    .th-nowrap th{ white-space:nowrap }
+  </style>
+</head>
+<body class="bg-white text-[var(--ink)] selection:bg-pink-100 selection:text-[var(--ink)]">
+  <!-- Topbar -->
+  <header class="fixed top-0 inset-x-0 h-[var(--header-h)] bg-[var(--pink)] text-white">
+    <div class="h-full max-w-7xl mx-auto px-4 flex items-center justify-between">
+      <h1 class="font-bold text-lg md:text-xl">📄 PDF Statement Parser</h1>
+      <div class="flex gap-2">
+        <button id="btnHow" class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition">วิธีใช้งาน</button>
+        <button id="btnSettings" class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition">ตั้งค่า Parser</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 pt-4 pb-28">
+    <!-- Uploader -->
+    <section class="bg-white rounded-2xl border border-[var(--line)] p-4 md:p-6 shadow-card mb-4">
+      <div class="flex items-center justify-between">
+        <div class="font-semibold">อัปโหลดไฟล์สเตทเม้นท์ (PDF)</div>
+        <span class="text-xs md:text-sm text-[var(--muted)] bg-slate-50 border border-[var(--line)] rounded-full px-2 py-1">
+          ประมวลผลภายในเครื่อง (Local) • ไม่อัปโหลดขึ้นเซิร์ฟเวอร์
+        </span>
+      </div>
+      <div class="grid md:grid-cols-4 gap-3 mt-4">
+        <label class="text-sm text-[var(--muted)]">
+          เลือกไฟล์ PDF
+          <input type="file" id="pdfFile" accept="application/pdf" class="mt-1 w-full block border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-300" />
+        </label>
+        <label class="text-sm text-[var(--muted)]">
+          รหัสผ่านไฟล์ (ถ้ามี)
+          <input type="text" id="pdfPassword" placeholder="รหัสผ่าน PDF" value="21041974" class="mt-1 w-full block border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-300" />
+        </label>
+        <label class="text-sm text-[var(--muted)]">
+          รูปแบบวันที่
+          <select id="dateFormat" class="mt-1 w-full block border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-300">
+            <option value="DMY" selected>วัน/เดือน/ปี (DMY)</option>
+            <option value="MDY">เดือน/วัน/ปี (MDY)</option>
+            <option value="YMD">ปี/เดือน/วัน (YMD)</option>
+          </select>
+        </label>
+        <div class="flex items-end">
+          <button id="btnParse" class="w-full bg-[var(--pink)] hover:bg-pink-700 text-white rounded-lg px-4 py-2.5 transition">เริ่มประมวลผล</button>
+        </div>
+      </div>
+      <p class="mt-2 text-xs text-[var(--muted)]">* หากเป็นไฟล์สแกนภาพ (ไม่มีตัวอักษรใน PDF) การอ่านอาจไม่สำเร็จ</p>
+    </section>
+
+    <!-- Dashboard Subnav -->
+    <nav id="navDashboard" class="sticky-sub h-[var(--subnav-h)] bg-[var(--pink)] text-white rounded-xl flex items-center px-4 mb-3">
+      <div class="w-full flex items-center justify-between max-w-7xl mx-auto">
+        <span class="font-semibold">📊 Dashboard</span>
+        <a href="#transactions" class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition">ไปตารางธุรกรรม</a>
+      </div>
+    </nav>
+
+    <!-- Summary -->
+    <section id="summaryRow" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card">
+        <div class="text-sm text-[var(--muted)]">รายการทั้งหมด</div>
+        <div id="sumCount" class="text-2xl font-semibold">0</div>
+      </div>
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card">
+        <div class="text-sm text-[var(--muted)]">รายรับ (รวม)</div>
+        <div id="sumIncome" class="text-2xl font-semibold">0</div>
+      </div>
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card">
+        <div class="text-sm text-[var(--muted)]">รายจ่าย (รวม)</div>
+        <div id="sumExpense" class="text-2xl font-semibold">0</div>
+      </div>
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card">
+        <div class="text-sm text-[var(--muted)]">สุทธิ</div>
+        <div id="sumNet" class="text-2xl font-semibold">0</div>
+      </div>
+    </section>
+
+    <!-- Audit -->
+    <section id="auditCard" class="hidden bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card mb-4">
+      <h3 class="font-semibold mb-3">รีเช็คยอดรวมจากหน้าสุดท้ายของเอกสาร</h3>
+      <div class="grid md:grid-cols-3 gap-3">
+        <div><div class="text-sm text-[var(--muted)]">รายรับ (ระบบ / เอกสาร / ส่วนต่าง)</div><div id="auditIncome" class="font-medium">-</div></div>
+        <div><div class="text-sm text-[var(--muted)]">รายจ่าย (ระบบ / เอกสาร / ส่วนต่าง)</div><div id="auditExpense" class="font-medium">-</div></div>
+        <div><div class="text-sm text-[var(--muted)]">สุทธิ (ระบบ / คำนวณ / ส่วนต่าง)</div><div id="auditNet" class="font-medium">-</div></div>
+      </div>
+      <div id="auditNote" class="mt-2 text-sm text-[var(--muted)]"></div>
+    </section>
+
+    <!-- Charts -->
+    <section id="chartRow" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card">
+        <h3 class="font-semibold mb-2">สัดส่วนรายจ่ายตามหมวดหมู่</h3>
+        <canvas id="pieExpense"></canvas>
+      </div>
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card">
+        <h3 class="font-semibold mb-2">รายรับ-รายจ่าย รายเดือน</h3>
+        <canvas id="barMonthly"></canvas>
+      </div>
+      <div class="bg-white border border-[var(--line)] rounded-2xl p-4 shadow-card md:col-span-2">
+        <h3 class="font-semibold mb-2">แนวโน้มเงินสุทธิสะสม</h3>
+        <canvas id="lineCumulative"></canvas>
+      </div>
+    </section>
+
+    <!-- Table Subnav -->
+    <div id="transactions"></div>
+    <nav id="navTable" class="sticky-table-sub h-[var(--subnav-h)] bg-[var(--pink)] text-white rounded-xl flex items-center px-4 mb-3">
+      <div class="w-full flex items-center justify-between max-w-7xl mx-auto">
+        <span class="font-semibold">📑 ตารางธุรกรรม</span>
+        <div class="flex gap-2">
+          <button class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition" id="btnClearFilters">ล้างตัวกรอง</button>
+          <button class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition" id="btnExportCSV">CSV</button>
+          <button class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition" id="btnExportXLSX">Excel</button>
+          <button class="px-3 py-1.5 rounded-lg border border-white/80 hover:bg-white hover:text-[var(--pink)] transition" id="btnExportXLSXByCat">Excel ตามหมวด</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Category chips -->
+    <section class="mb-2"><div id="categoryChips" class="text-sm"></div></section>
+
+    <!-- Table -->
+    <section id="tableCard" class="hidden bg-white border border-[var(--line)] rounded-2xl p-0 shadow-card">
+      <div class="scroll-x">
+        <table class="w-full text-sm">
+          <thead class="th-nowrap">
+            <tr class="bg-slate-50">
+              <th class="px-3 py-2 text-left border-b">วันที่</th>
+              <th class="px-3 py-2 text-left border-b">เวลา</th>
+              <th class="px-3 py-2 text-left border-b">Code</th>
+              <th class="px-3 py-2 text-left border-b">ช่องทาง</th>
+              <th class="px-3 py-2 text-right border-b">จำนวนเงิน</th>
+              <th class="px-3 py-2 text-right border-b">ยอดคงเหลือ</th>
+              <th class="px-3 py-2 text-left border-b">ประเภท</th>
+              <th class="px-3 py-2 text-left border-b">หมวดหมู่</th>
+              <th class="px-3 py-2 text-left border-b">รายละเอียด</th>
+            </tr>
+            <tr class="bg-white">
+              <th class="px-3 py-2 border-b"><select id="fDate" class="w-44 md:w-48 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b"><select id="fTime" class="w-28 md:w-32 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b"><select id="fCode" class="w-28 md:w-32 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b"><select id="fChannel" class="w-32 md:w-40 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b text-right"><select id="fAmount" class="w-32 md:w-40 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b text-right"><select id="fBalance" class="w-32 md:w-40 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b"><select id="fType" class="w-28 md:w-32 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b"><select id="fCategory" class="w-44 md:w-56 border rounded-lg px-2 py-1"></select></th>
+              <th class="px-3 py-2 border-b"><select id="fDesc" class="w-64 md:w-80 border rounded-lg px-2 py-1"></select></th>
+            </tr>
+          </thead>
+          <tbody id="tblBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="mt-3 text-sm text-[var(--muted)]">💡 ส่งออกไฟล์จะอ้างอิง “ข้อมูลที่เห็นอยู่ตามตัวกรอง” ขณะกดดาวน์โหลด</p>
+  </main>
+
+  <!-- Footer -->
+  <footer class="fixed bottom-0 inset-x-0 bg-[var(--pink)] text-white">
+    <div class="max-w-7xl mx-auto px-4 py-3 text-center">
+      พัฒนาโดย <strong>KruHambaleeWaji</strong> (064 323 0483)
+    </div>
+  </footer>
+
+  <script>
+  /**********************
+   * สถานะ/ตัวแปรกลาง
+   **********************/
+  const MAX_FILTER_OPTIONS = 200;
+  const state = {
+    rawLines: [],
+    transactions: [],
+    charts: { pie: null, bar: null, line: null },
+    settings: {
+      dateFormat: 'DMY',
+      rulesText: '',
+      categoryRules: [],
+      classificationMode: 'CODE',
+      tableOnly: true,
+      codeIncome: ['X1','C','CR'],
+      codeExpense: ['X2','D','DR'],
+      incomeKeywords: ['CR','CREDIT','REFUND','SALARY','PAYROLL','INTEREST'],
+      expenseKeywords: ['DR','DEBIT','FEE','CHARGE','PAYMENT','ATM','WITHDRAW']
+    }
+  };
+
+  const DEFAULT_RULES = `
+  (SALARY|PAYROLL|โอนเข้าเงินเดือน) => รายได้/เงินเดือน
+  (INTEREST|ดอกเบี้ย) => รายได้/ดอกเบี้ย
+  (PROMPTPAY|พร้อมเพย์|โอนเข้า|FROM|Prompt-IN) => รายได้/รับโอน
+  (TOPUP|เติมเงิน|TRUE|AIS|DTAC) => สื่อสาร/โทรศัพท์
+  (7-?ELEVEN|SEVEN|7/11) => ร้านสะดวกซื้อ
+  (LOTUS|TESCO|BIG C|MAKRO) => ของใช้/ซูเปอร์มาร์เก็ต
+  (GRAB|LINE MAN|SHOPEEFOOD|GET) => เดินทาง/ส่งอาหาร
+  (SCB EASY|K ?PLUS|MOBILE BANKING|APP TRANSFER) => การเงิน/ออนไลน์
+  (ATM|CASH WITHDRAW|ถอนเงิน) => เงินสด/ถอน
+  (FEE|ค่าธรรมเนียม|CHARGE) => ค่าธรรมเนียม
+  (ELECTRIC|MEA|PEA|ไฟฟ้า) => สาธารณูปโภค/ไฟฟ้า
+  (WATERWORKS|การประปา|น้ำประปา) => สาธารณูปโภค/น้ำ
+  (INTERNET|FIBER|TRUEONLINE|3BB|AIS FIBRE) => สาธารณูปโภค/อินเทอร์เน็ต
+  (HOSPITAL|CLINIC|โรงพยาบาล|คลินิก) => สุขภาพ/รักษาพยาบาล
+  (SCHOOL|TUITION|ค่าเทอม|โรงเรียน) => การศึกษา
+  (LAZADA|SHOPEE|JD CENTRAL) => ช้อปปิ้งออนไลน์
+  (FUEL|ปั๊ม|PTT|BANGCHAK|ESSO|SHELL) => เดินทาง/น้ำมัน
+  `;
+
+  /* ---------- Utils ---------- */
+  function loadSettings(){
+    try{
+      const saved = JSON.parse(localStorage.getItem('pdfParserSettings')||'{}');
+      Object.assign(state.settings, saved||{});
+    }catch(e){}
+    if(!state.settings.rulesText) state.settings.rulesText = DEFAULT_RULES.trim();
+    compileCategoryRules();
+    document.getElementById('dateFormat').value = state.settings.dateFormat;
+  }
+  function saveSettings(){ localStorage.setItem('pdfParserSettings', JSON.stringify(state.settings)); }
+
+  function compileCategoryRules(){
+    const lines = (state.settings.rulesText||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+    state.settings.categoryRules = [];
+    for(const line of lines){
+      const m = line.match(/^(.*)\s*=>\s*(.*)$/);
+      if(!m) continue;
+      try{ state.settings.categoryRules.push({re:new RegExp(m[1].trim(),'i'), cat:m[2].trim()}); }catch(e){}
+    }
+  }
+
+  function formatMoney(n){
+    if(typeof n!=='number' || Number.isNaN(n)) return '-';
+    return n.toLocaleString('th-TH',{minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  const escapeHtml = s => String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+
+  function showHowTo(){
+    Swal.fire({
+      title:'วิธีใช้งาน',
+      html:`<div class="text-left">
+        <ol class="list-decimal ms-5 space-y-1">
+          <li>เลือกไฟล์ PDF และใส่รหัสผ่าน (ถ้ามี) — ดีฟอลต์ <code>21041974</code></li>
+          <li>อ่านเฉพาะ <b>ตาราง</b> ของแต่ละหน้า</li>
+          <li>แยกประเภทจากคอลัมน์ <b>Code</b> (X1=รายรับ, X2=รายจ่าย)</li>
+          <li>เช็คยอดรวม (Audit) กับหน้าสุดท้าย</li>
+          <li>ส่งออก CSV / Excel / Excel ตามหมวด</li>
+        </ol>
+        <div class="text-xs text-[var(--muted)] mt-2">* ไฟล์สแกนอาจไม่รองรับ</div>
+      </div>`,
+      confirmButtonText:'เข้าใจแล้ว'
+    });
+  }
+
+  function showSettings(){
+    Swal.fire({
+      title:'ตั้งค่า Parser',
+      html:`<div class="text-left">
+        <label class="block text-sm mb-1">รูปแบบวันที่</label>
+        <select id="swalDateFormat" class="w-full border rounded-lg px-2 py-1 mb-3">
+          <option value="DMY">วัน/เดือน/ปี (DMY)</option>
+          <option value="MDY">เดือน/วัน/ปี (MDY)</option>
+          <option value="YMD">ปี/เดือน/วัน (YMD)</option>
+        </select>
+        <label class="inline-flex items-center gap-2 mb-3">
+          <input id="swalTableOnly" type="checkbox" class="scale-110"><span>อ่านเฉพาะส่วนตาราง</span>
+        </label>
+        <label class="block text-sm mb-1">รหัส Code ที่ถือเป็น <b>รายรับ</b></label>
+        <input id="swalCodeIncome" class="w-full border rounded-lg px-2 py-1 mb-3" placeholder="X1, C, CR">
+        <label class="block text-sm mb-1">รหัส Code ที่ถือเป็น <b>รายจ่าย</b></label>
+        <input id="swalCodeExpense" class="w-full border rounded-lg px-2 py-1" placeholder="X2, D, DR">
+        <div class="text-xs text-[var(--muted)] mt-2">ตัวอย่างตาราง: <code>วันที่ เวลา Code ช่องทาง จำนวนเงิน ยอดคงเหลือ รายละเอียด</code></div>
+      </div>`,
+      showCancelButton:true, confirmButtonText:'บันทึก', cancelButtonText:'ยกเลิก',
+      didOpen:()=>{
+        swalDateFormat.value = state.settings.dateFormat;
+        swalTableOnly.checked = !!state.settings.tableOnly;
+        swalCodeIncome.value = (state.settings.codeIncome||[]).join(', ');
+        swalCodeExpense.value = (state.settings.codeExpense||[]).join(', ');
+      },
+      preConfirm:()=>{
+        const fmt = swalDateFormat.value;
+        const tableOnly = swalTableOnly.checked;
+        const inc = swalCodeIncome.value.split(/\s*,\s*/).filter(Boolean);
+        const exp = swalCodeExpense.value.split(/\s*,\s*/).filter(Boolean);
+        return {fmt, tableOnly, inc, exp};
+      }
+    }).then(res=>{
+      if(res.isConfirmed){
+        state.settings.dateFormat = res.value.fmt;
+        state.settings.tableOnly = !!res.value.tableOnly;
+        state.settings.codeIncome = res.value.inc;
+        state.settings.codeExpense = res.value.exp;
+        compileCategoryRules(); saveSettings();
+        document.getElementById('dateFormat').value = state.settings.dateFormat;
+        Swal.fire({icon:'success', title:'บันทึกแล้ว', timer:1200, showConfirmButton:false});
+      }
+    });
+  }
+
+  /* ---------- PDF helpers ---------- */
+  async function pdfToPages(arrayBuffer, password){
+    const pages = [];
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, password });
+    const pdf = await loadingTask.promise;
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const items = content.items || [];
+      const rows = {};
+      for(const it of items){
+        const t = it.str || ''; if(!t.trim()) continue;
+        const y = Math.round(it.transform[5]);
+        rows[y] = rows[y] || []; rows[y].push({x: it.transform[4], text: t});
+      }
+      const ys = Object.keys(rows).map(v=>+v).sort((a,b)=>b-a);
+      const pageRows = [];
+      for(const y of ys){
+        const rowText = rows[y].sort((a,b)=>a.x-b.x).map(o=>o.text).join(' ').replace(/\s{2,}/g,' ').trim();
+        if(rowText) pageRows.push({y, text: rowText});
+      }
+      pages.push(pageRows);
+    }
+    return pages;
+  }
+  const isTableHeaderRow = t => /(วันที่|Date)\b.*(เวลา|Time)\b.*\b(Code|รหัส)\b|\b(Amount|จำนวนเงิน)\b|\b(Balance|ยอดคงเหลือ)\b/i.test(t);
+  const isDateToken = tok => /^\d{1,4}[\/-]\d{1,2}[\/-]\d{1,4}$/.test(tok);
+  function firstTableRowIndex(page){
+    for(let i=0;i<page.length;i++){
+      const r = page[i].text.trim(); const toks = r.split(/\s+/);
+      if(toks.length<6) continue;
+      if(isDateToken(toks[0]) && /^\d{1,2}:\d{2}$/.test(toks[1])) return i;
+      if(isTableHeaderRow(r)) return i+1;
+    } return 0;
+  }
+  function flattenTableLinesFromPages(pages, tableOnly=true){
+    const out=[]; for(const page of pages){ const s = tableOnly? firstTableRowIndex(page) : 0; for(let i=s;i<page.length;i++) out.push(page[i].text); } return out;
+  }
+  function parseTotalsFromLastPage(pages){
+    if(!pages.length) return {docIncome:null, docExpense:null};
+    const last = pages[pages.length-1].map(r=>r.text);
+    let docIncome=null, docExpense=null;
+    const incomePat = /(รวม.?รายรับ|รายรับรวม|รวมรับ|TOTAL\s+IN|INCOME\s+TOTAL|\bCR\b\s*TOTAL)/i;
+    const expensePat= /(รวม.?รายจ่าย|รายจ่ายรวม|รวมจ่าย|TOTAL\s+OUT|EXP(ENSE)?\s+TOTAL|\bDR\b\s*TOTAL)/i;
+    for(const ln of last){
+      if(incomePat.test(ln)){ const nums = extractNumbersFromEnd(ln); if(nums.length) docIncome = Math.abs(toNumber(nums.at(-1))); }
+      if(expensePat.test(ln)){ const nums = extractNumbersFromEnd(ln); if(nums.length) docExpense = Math.abs(toNumber(nums.at(-1))); }
+    }
+    return {docIncome, docExpense};
+  }
+
+  function parseDate(str){
+    const s = str.replace(/\./g,'/').replace(/-/g,'/'); const parts = s.split('/');
+    if(parts.length!==3) return null; let d,m,y; const fmt = state.settings.dateFormat;
+    if(fmt==='DMY'){ d=parts[0]; m=parts[1]; y=parts[2]; }
+    else if(fmt==='MDY'){ m=parts[0]; d=parts[1]; y=parts[2]; }
+    else { y=parts[0]; m=parts[1]; d=parts[2]; }
+    if(y.length===2) y = (parseInt(y,10)>50? '19'+y : '20'+y);
+    const iso = `${y.padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dt = new Date(iso); return Number.isNaN(dt.getTime())? null : iso;
+  }
+  const extractNumbersFromEnd = line => [...line.matchAll(/[\(\-]?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?(?:\s?(?:CR|DR))?/gi)].map(m=>m[0]);
+  function toNumber(numStr){
+    if(!numStr) return null; let s=String(numStr).trim(), neg=false;
+    if(/\(.*\)/.test(s)){ neg=true; s=s.replace(/[()]/g,''); }
+    let crdr=null; if(/\bCR\b/i.test(s)) crdr='CR'; if(/\bDR\b/i.test(s)) crdr='DR';
+    s=s.replace(/CR|DR/gi,'').replace(/[,\s]/g,''); const v=parseFloat(s); if(Number.isNaN(v)) return null;
+    let n=v; if(neg) n=-n; if(crdr==='DR') n=-Math.abs(n); return n;
+  }
+  function detectTypeByCode(code){
+    const c=String(code||'').toUpperCase();
+    if(state.settings.codeIncome.some(k=>k.toUpperCase()===c)) return 'income';
+    if(state.settings.codeExpense.some(k=>k.toUpperCase()===c)) return 'expense';
+    return null;
+  }
+  function detectType(desc, amount, code){
+    const byCode = detectTypeByCode(code); if(byCode) return byCode;
+    if(/^Prompt[- ]?IN\//i.test(String(desc||''))) return 'income';
+    if(typeof amount==='number') return amount<0? 'expense':'income';
+    const up = String(desc||'').toUpperCase();
+    if(state.settings.incomeKeywords.some(k=>up.includes(k))) return 'income';
+    if(state.settings.expenseKeywords.some(k=>up.includes(k))) return 'expense';
+    return 'unknown';
+  }
+  function categorize(desc){
+    for(const rule of state.settings.categoryRules){ if(rule.re.test(desc||'')) return rule.cat; }
+    return 'อื่นๆ';
+  }
+
+  /* ---------- Parse lines ---------- */
+  function parseLineStructured(line){
+    const re=/^\s*(\d{1,4}[\/-]\d{1,2}[\/-]\d{1,4})\s+(\d{1,2}:\d{2})\s+([A-Za-z0-9]+)\s+([A-Za-z]+)\s+([()0-9,.-]+(?:\s?(?:CR|DR))?)\s+([()0-9,.-]+(?:\s?(?:CR|DR))?)\s+(.+)$/;
+    const m=line.match(re); if(!m) return null;
+    const dateIso=parseDate(m[1]); return {date:dateIso||m[1], time:m[2], code:m[3], channel:m[4], amount:toNumber(m[5]), balance:toNumber(m[6]), description:m[7]};
+  }
+  function parseTransactionsFromLines(lines){
+    const tx=[];
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i].trim(); if(!line) continue;
+      let row = parseLineStructured(line);
+      if(!row){
+        const tokens=line.split(/\s+/); if(!isDateToken(tokens[0])) continue;
+        const dateIso=parseDate(tokens[0]); let desc=line.slice(tokens[0].length).trim();
+        let look=i+1;
+        while(look<lines.length && !isDateToken(lines[look].trim().split(/\s+/)[0])){
+          const la=lines[look].trim(); const nums=extractNumbersFromEnd(la);
+          if(nums.length>=1 && la.replace(/[\s\-(),.\d]/g,'').length<6) break;
+          desc+=' '+la; look++;
+        }
+        const composite=line+' '+(lines[i+1]||''); let nums=extractNumbersFromEnd(composite);
+        if(nums.length===0){ let concat=''; for(let j=i;j<look;j++) concat+=' '+lines[j]; nums=extractNumbersFromEnd(concat); }
+        let amount=null, balance=null; if(nums.length>=1) amount=toNumber(nums.at(-1)); if(nums.length>=2) balance=toNumber(nums.at(-2));
+        row={date:dateIso||tokens[0], time:'', code:'', channel:'', amount, balance, description:desc.trim()}; i=Math.max(i, look-1);
+      }
+      const type=detectType(row.description, row.amount, row.code);
+      if(typeof row.amount==='number'){ row.amount = (type==='income')? Math.abs(row.amount) : -Math.abs(row.amount); }
+      const category=categorize(row.description);
+      tx.push({date:row.date, time:row.time, code:row.code, channel:row.channel, amount:row.amount, balance:row.balance, type, category, description:row.description});
+    }
+    return tx;
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderSummary(trans){
+    const income=trans.filter(t=>t.type==='income').reduce((a,b)=>a+(b.amount||0),0);
+    const expense=trans.filter(t=>t.type==='expense').reduce((a,b)=>a+Math.abs(b.amount||0),0);
+    const net=income-expense;
+    sumCount.textContent=trans.length.toLocaleString('th-TH');
+    sumIncome.textContent=formatMoney(income);
+    sumExpense.textContent=formatMoney(expense);
+    sumNet.textContent=formatMoney(net);
+    summaryRow.classList.remove('hidden');
+  }
+  const groupBy=(arr, keyFn)=>{ const m=new Map(); for(const it of arr){ const k=keyFn(it); m.set(k,(m.get(k)||[]).concat([it])); } return m; };
+
+  function renderCharts(trans){
+    const exp=trans.filter(t=>t.type==='expense' && typeof t.amount==='number');
+    const expByCat=new Map(); for(const t of exp){ const k=t.category||'อื่นๆ'; expByCat.set(k,(expByCat.get(k)||0)+Math.abs(t.amount)); }
+    const pieLabels=[...expByCat.keys()], pieData=[...expByCat.values()].map(v=>+v.toFixed(2));
+    if(state.charts.pie) state.charts.pie.destroy();
+    state.charts.pie=new Chart(pieExpense,{type:'pie', data:{labels:pieLabels, datasets:[{data:pieData}]}});
+
+    const byMonth={}; for(const t of trans){ if(!t.date||t.date.length<7) continue; const m=t.date.slice(0,7); byMonth[m]=byMonth[m]||{income:0,expense:0}; if(t.type==='income') byMonth[m].income+=(t.amount||0); if(t.type==='expense') byMonth[m].expense+=Math.abs(t.amount||0); }
+    const months=Object.keys(byMonth).sort(), incSeries=months.map(m=>+byMonth[m].income.toFixed(2)), expSeries=months.map(m=>+byMonth[m].expense.toFixed(2));
+    if(state.charts.bar) state.charts.bar.destroy();
+    state.charts.bar=new Chart(barMonthly,{type:'bar', data:{labels:months, datasets:[{label:'รายรับ',data:incSeries},{label:'รายจ่าย',data:expSeries}]}, options:{responsive:true}});
+
+    const sorted=trans.filter(t=>t.date&&typeof t.amount==='number').sort((a,b)=>a.date.localeCompare(b.date));
+    let cumul=0; const dates=[], values=[]; for(const t of sorted){ cumul+=t.amount; dates.push(t.date); values.push(+cumul.toFixed(2)); }
+    if(state.charts.line) state.charts.line.destroy();
+    state.charts.line=new Chart(lineCumulative,{type:'line', data:{labels:dates, datasets:[{label:'สุทธิสะสม', data:values}]}});
+
+    chartRow.classList.remove('hidden');
+  }
+
+  /* ---------- Unique dropdown filters ---------- */
+  function uniqueValues(arr, mapper, opts={}){
+    const byFreq=new Map();
+    for(const it of arr){
+      const v=mapper(it); const key=(v==null||v==='')? '' : String(v);
+      if(!opts.includeEmpty && key==='') continue;
+      byFreq.set(key,(byFreq.get(key)||0)+1);
+    }
+    let list=[...byFreq.entries()].sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0],'th'));
+    if(opts.numeric){ list=list.sort((a,b)=> b[1]-a[1] || (parseFloat(a[0])-parseFloat(b[0]))); }
+    if(list.length>MAX_FILTER_OPTIONS) list=list.slice(0,MAX_FILTER_OPTIONS);
+    const vals=list.map(x=>x[0]); if(opts.includeEmpty) vals.unshift(''); return vals;
+  }
+  function fillSelectOptions(el, values, fmt=v=>v, placeholder='(ทั้งหมด)'){
+    el.innerHTML=''; const optAll=document.createElement('option'); optAll.value=''; optAll.textContent=placeholder; el.appendChild(optAll);
+    for(const v of values){ const op=document.createElement('option'); op.value=v; op.textContent=fmt(v); el.appendChild(op); }
+  }
+  function renderCategoryChips(trans){
+    const cats=Array.from(new Set(trans.map(t=>t.category||'อื่นๆ'))).sort();
+    categoryChips.innerHTML=cats.map(c=>`<button data-cat="${escapeHtml(c)}" class="chip hover:border-pink-400 hover:bg-pink-50">${escapeHtml(c)}</button>`).join('');
+    categoryChips.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ fCategory.value = btn.dataset.cat||''; renderTable(state.transactions); });
+    });
+  }
+  function buildDropdownFilters(trans){
+    fillSelectOptions(fDate,    uniqueValues(trans,t=>t.date,{includeEmpty:false}), v=>v);
+    fillSelectOptions(fTime,    uniqueValues(trans,t=>t.time,{includeEmpty:false}), v=>v);
+    fillSelectOptions(fCode,    uniqueValues(trans,t=>t.code,{includeEmpty:false}), v=>v);
+    fillSelectOptions(fChannel, uniqueValues(trans,t=>t.channel,{includeEmpty:false}), v=>v);
+    fillSelectOptions(fAmount,  uniqueValues(trans,t=> (t.amount!=null?t.amount.toFixed(2):''), {includeEmpty:false,numeric:true}), v=>Number(v).toLocaleString('th-TH',{minimumFractionDigits:2}));
+    fillSelectOptions(fBalance, uniqueValues(trans,t=> (t.balance!=null?t.balance.toFixed(2):''),{includeEmpty:false,numeric:true}), v=>Number(v).toLocaleString('th-TH',{minimumFractionDigits:2}));
+    fillSelectOptions(fType,    uniqueValues(trans,t=>t.type,{includeEmpty:false}), v=>v);
+    fillSelectOptions(fCategory,uniqueValues(trans,t=>t.category||'อื่นๆ',{includeEmpty:false}), v=>v);
+    fillSelectOptions(fDesc,    uniqueValues(trans,t=>t.description,{includeEmpty:false}), v=> v.length>80? (v.slice(0,80)+'…'):v);
+    ['fDate','fTime','fCode','fChannel','fAmount','fBalance','fType','fCategory','fDesc'].forEach(id=>{ document.getElementById(id).onchange=()=>renderTable(state.transactions); });
+  }
+  const getFilterVals=()=>({ date:fDate.value, time:fTime.value, code:fCode.value, channel:fChannel.value, amount:fAmount.value, balance:fBalance.value, type:fType.value, category:fCategory.value, description:fDesc.value });
+  function filterTransactions(trans){
+    const f=getFilterVals();
+    return trans.filter(t=>{
+      if(f.date && t.date!==f.date) return false;
+      if(f.time && t.time!==f.time) return false;
+      if(f.code && t.code!==f.code) return false;
+      if(f.channel && t.channel!==f.channel) return false;
+      if(f.amount && (t.amount==null||t.amount.toFixed(2)!==f.amount)) return false;
+      if(f.balance && (t.balance==null||t.balance.toFixed(2)!==f.balance)) return false;
+      if(f.type && t.type!==f.type) return false;
+      if(f.category && (t.category||'อื่นๆ')!==f.category) return false;
+      if(f.description && t.description!==f.description) return false;
+      return true;
+    });
+  }
+  function clearFilters(){ ['fDate','fTime','fCode','fChannel','fAmount','fBalance','fType','fCategory','fDesc'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); }
+  function renderTable(trans){
+    const tbody=tblBody; const filtered=filterTransactions(trans); tbody.innerHTML='';
+    for(const t of filtered){
+      const tr=document.createElement('tr'); tr.className="border-b hover:bg-slate-50";
+      tr.innerHTML=`
+        <td class="px-3 py-2 whitespace-nowrap">${t.date||''}</td>
+        <td class="px-3 py-2 whitespace-nowrap">${t.time||''}</td>
+        <td class="px-3 py-2 whitespace-nowrap">${t.code||''}</td>
+        <td class="px-3 py-2 whitespace-nowrap">${t.channel||''}</td>
+        <td class="px-3 py-2 text-right whitespace-nowrap">${formatMoney(t.amount||0)}</td>
+        <td class="px-3 py-2 text-right whitespace-nowrap">${t.balance!=null? formatMoney(t.balance): ''}</td>
+        <td class="px-3 py-2 whitespace-nowrap">${t.type}</td>
+        <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(t.category||'')}</td>
+        <td class="px-3 py-2">${escapeHtml(t.description||'')}</td>`;
+      tbody.appendChild(tr);
+    }
+    tableCard.classList.remove('hidden');
+  }
+
+  function renderAudit(totals, rows){
+    if(!totals || (!totals.docIncome && !totals.docExpense)){ auditCard.classList.add('hidden'); return; }
+    const sysIncome=rows.filter(t=>t.type==='income').reduce((a,b)=>a+(b.amount||0),0);
+    const sysExpense=rows.filter(t=>t.type==='expense').reduce((a,b)=>a+Math.abs(b.amount||0),0);
+    const docIncome=totals.docIncome??null, docExpense=totals.docExpense??null;
+    const netSys=sysIncome-sysExpense, netDoc=(docIncome!=null&&docExpense!=null)? (docIncome-docExpense):null;
+    const fmt=n=> (n==null? '-' : n.toLocaleString('th-TH',{minimumFractionDigits:2, maximumFractionDigits:2}));
+    const diff=(a,b)=> (a==null||b==null? '-' : (a-b).toLocaleString('th-TH',{minimumFractionDigits:2, maximumFractionDigits:2}));
+    auditIncome.textContent=`${fmt(sysIncome)} / ${fmt(docIncome)} / ${diff(sysIncome,docIncome)}`;
+    auditExpense.textContent=`${fmt(sysExpense)} / ${fmt(docExpense)} / ${diff(sysExpense,docExpense)}`;
+    auditNet.textContent=`${fmt(netSys)} / ${fmt(netDoc)} / ${diff(netSys,netDoc)}`;
+    auditNote.textContent = (docIncome==null||docExpense==null)
+      ? 'ไม่พบยอดรวมในเอกสารครบทั้งรายรับและรายจ่าย ใช้ได้เท่าที่พบ'
+      : (Math.abs(netSys-netDoc)<1e-2 && Math.abs(sysIncome-docIncome)<1e-2 && Math.abs(sysExpense-docExpense)<1e-2)
+        ? '✅ ยอดระบบตรงกับเอกสาร'
+        : '⚠️ ยอดระบบไม่ตรงกับเอกสาร โปรดตรวจโหมดอ่านตาราง/รูปแบบวันที่/กติกาโค้ด';
+    auditCard.classList.remove('hidden');
+  }
+
+  /* ---------- Export ---------- */
+  const getVisibleRows=()=>filterTransactions(state.transactions);
+  function downloadBlob(blob, filename){ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url),4000); }
+
+  // multi-CDN loader + ESM fallback
+  function loadScript(src, timeout=8000){
+    return new Promise((res, rej)=>{
+      const s=document.createElement('script');
+      s.src=src; s.async=true; s.crossOrigin='anonymous'; s.referrerPolicy='no-referrer';
+      s.onload=()=>res(true); s.onerror=()=>rej(new Error('load error: '+src));
+      document.head.appendChild(s);
+      setTimeout(()=>rej(new Error('timeout: '+src)), timeout);
+    });
+  }
+  async function ensureXLSX(){
+    if (window.XLSX) return true;
+    const mirrors=[
+      'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js',
+      'https://unpkg.com/xlsx@0.19.3/dist/xlsx.full.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js'
+    ];
+    for(const url of mirrors){
+      try{ await loadScript(url); if(window.XLSX) return true; }catch(e){/* try next */ }
+    }
+    // ESM fallback
+    try{
+      const mod = await import('https://esm.sh/xlsx@0.19.3?bundle');
+      if(mod){ window.XLSX = mod.default || mod; return true; }
+    }catch(e){}
+    throw new Error('ไม่สามารถโหลดไลบรารี Excel (SheetJS)');
+  }
+
+  // HTML .xls fallback (no library)
+  function htmlTableFromRows(rows){
+    const esc=escapeHtml, numFmt="mso-number-format:'0.00'";
+    const header=`<tr>
+      <th>date</th><th>time</th><th>code</th><th>channel</th>
+      <th>amount</th><th>balance</th><th>type</th><th>category</th><th>description</th></tr>`;
+    const body=rows.map(r=>`<tr>
+      <td>${esc(r.date??'')}</td>
+      <td>${esc(r.time??'')}</td>
+      <td>${esc(r.code??'')}</td>
+      <td>${esc(r.channel??'')}</td>
+      <td style="${numFmt}">${typeof r.amount==='number'? r.amount : ''}</td>
+      <td style="${numFmt}">${typeof r.balance==='number'? r.balance : ''}</td>
+      <td>${esc(r.type??'')}</td>
+      <td>${esc(r.category??'')}</td>
+      <td>${esc(r.description??'')}</td>
+    </tr>`).join('');
+    return `<table border="1">${header}${body}</table>`;
+  }
+  function exportXLS_Fallback(rows, filename='transactions.xls'){
+    const html=`<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body>
+      ${htmlTableFromRows(rows)}
+      </body></html>`;
+    downloadBlob(new Blob([html], {type:'application/vnd.ms-excel;charset=utf-8;'}), filename);
+  }
+  function safeName(s){ return String(s||'Sheet').replace(/[\\/:*?"<>|]/g,'_').slice(0,31) || 'Sheet'; }
+
+  async function exportXLSX(rows, filename='transactions.xlsx'){
+    try{
+      await ensureXLSX();
+      const clean=rows.map(r=>({
+        date:r.date??'', time:r.time??'', code:r.code??'', channel:r.channel??'',
+        amount: typeof r.amount==='number'? r.amount:null,
+        balance: typeof r.balance==='number'? r.balance:null,
+        type:r.type??'', category:r.category??'', description:r.description??''
+      }));
+      const ws=XLSX.utils.json_to_sheet(clean);
+      ws['!cols']=[{wch:12},{wch:8},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10},{wch:24},{wch:50}];
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+      const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+      downloadBlob(new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), filename);
+    }catch(err){
+      console.warn('ใช้โหมดสำรอง .xls', err);
+      Swal.fire({icon:'info', title:'สลับเป็นโหมดสำรอง', text:'ไม่สามารถโหลดไลบรารี Excel — จะส่งออกเป็น .xls ให้แทน'});
+      exportXLS_Fallback(rows, filename.replace(/\.xlsx$/i,'.xls'));
+    }
+  }
+
+  async function exportXLSXByCategory(rows, filename='transactions_by_category.xlsx'){
+    try{
+      await ensureXLSX();
+      const wb=XLSX.utils.book_new();
+      const groups=groupBy(rows, r=>r.category||'อื่นๆ');
+      for(const [cat, items] of groups.entries()){
+        const clean=items.map(r=>({
+          date:r.date??'', time:r.time??'', code:r.code??'', channel:r.channel??'',
+          amount: typeof r.amount==='number'? r.amount:null,
+          balance: typeof r.balance==='number'? r.balance:null,
+          type:r.type??'', category:r.category??'', description:r.description??''
+        }));
+        const ws=XLSX.utils.json_to_sheet(clean);
+        ws['!cols']=[{wch:12},{wch:8},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10},{wch:24},{wch:50}];
+        XLSX.utils.book_append_sheet(wb, ws, safeName(cat));
+      }
+      const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+      downloadBlob(new Blob([wbout],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), filename);
+    }catch(err){
+      console.warn('ใช้โหมดสำรอง .xls (หลายไฟล์)', err);
+      Swal.fire({icon:'info', title:'สลับเป็นโหมดสำรอง', html:'จะสร้างไฟล์ <b>.xls</b> แยกตามหมวด (หนึ่งไฟล์ต่อหมวด)'});
+      // one .xls per category
+      const groups=groupBy(rows, r=>r.category||'อื่นๆ');
+      let delay=0;
+      for(const [cat, items] of groups.entries()){
+        setTimeout(()=>exportXLS_Fallback(items, `${safeName(cat)}.xls`), delay);
+        delay+=300; // เว้นจังหวะให้เบราว์เซอร์โหลดไฟล์ได้ครบ
+      }
+    }
+  }
+
+  function exportCSV(rows, filename='transactions.csv'){
+    const header=['date','time','code','channel','amount','balance','type','category','description'];
+    const csv=[header.join(',')].concat(rows.map(r=>[
+      r.date??'', r.time??'', r.code??'', r.channel??'',
+      r.amount!=null? r.amount : '',
+      r.balance!=null? r.balance : '',
+      r.type??'',
+      '"'+String(r.category||'').replace(/"/g,'""')+'"',
+      '"'+String(r.description||'').replace(/"/g,'""')+'"'
+    ].join(','))).join('\n');
+    downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8;'}), filename);
+  }
+
+  /* ---------- Main flow ---------- */
+  async function handleParse(){
+    try{
+      const file=pdfFile.files?.[0];
+      const password=pdfPassword.value || undefined;
+      state.settings.dateFormat = dateFormat.value; saveSettings();
+      if(!file){ Swal.fire({icon:'warning', title:'ยังไม่ได้เลือกไฟล์', timer:1500, showConfirmButton:false}); return; }
+      Swal.fire({title:'กำลังอ่านไฟล์...', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+
+      const ab=await file.arrayBuffer();
+      const pages=await pdfToPages(ab, password);
+      const lines=flattenTableLinesFromPages(pages, state.settings.tableOnly);
+      state.rawLines=lines;
+      if(!lines.length){ Swal.fire({icon:'error', title:'ไม่พบข้อมูลตาราง', text:'ลองปรับรูปแบบวันที่หรือปิดโหมดอ่านเฉพาะตารางใน "ตั้งค่า Parser"'}); return; }
+
+      Swal.update({title:'กำลังวิเคราะห์...', html:'จัดโครงสร้างธุรกรรม…'});
+      const tx=parseTransactionsFromLines(lines);
+      const cleaned=tx.filter(t=> (typeof t.amount==='number') && String(t.description||'').trim().length>0);
+      state.transactions=cleaned;
+
+      const totals=parseTotalsFromLastPage(pages);
+      renderAudit(totals, cleaned);
+
+      Swal.close();
+      if(!cleaned.length){ Swal.fire({icon:'warning', title:'ไม่พบธุรกรรม', text:'ลองปรับรูปแบบวันที่หรือกติกาโค้ด/หมวดหมู่'}); return; }
+
+      renderSummary(cleaned); renderCharts(cleaned); renderCategoryChips(cleaned); buildDropdownFilters(cleaned); renderTable(cleaned);
+      Swal.fire({icon:'success', title:`สำเร็จ: ${cleaned.length.toLocaleString('th-TH')} รายการ`, timer:1400, showConfirmButton:false});
+    }catch(err){
+      console.error(err);
+      Swal.fire({icon:'error', title:'เกิดข้อผิดพลาด', text:String(err && err.message || err)});
+    }
+  }
+
+  /* ---------- Self tests (console) ---------- */
+  function runSelfTests(){
+    try{
+      console.group('SelfTests');
+      console.assert(toNumber('1,234.50')===1234.5,'toNumber basic');
+      console.assert(toNumber('(1,234.50)')===-1234.5,'toNumber parentheses');
+      console.assert(toNumber('1,000 DR')===-1000,'toNumber DR negative');
+      const line='01/05/25 09:28 X1 ENET 22.00 2,017.82 รายการ Prompt-IN/นาย ตัวอย่าง';
+      const p1=parseLineStructured(line); console.assert(p1 && p1.code==='X1' && p1.channel==='ENET','parseLineStructured basics');
+      console.assert(detectType('Prompt-IN/ นายใครสักคน', 100, 'X1')==='income','detectType income');
+      console.assert(detectType('ถอนเงิน ATM', -500, 'X2')==='expense','detectType expense');
+      const lines=['01/05/25 09:28 X1 ENET 100.00 2,000.00 รายการ Prompt-IN/ทดสอบ','01/05/25 10:00 X2 ENET 50.00 1,950.00 รายการ ชำระค่าสินค้า'];
+      const tx=parseTransactionsFromLines(lines); const inc=tx.filter(t=>t.type==='income').length; const exp=tx.filter(t=>t.type==='expense').length;
+      console.assert(inc===1 && exp===1,'parseTransactionsFromLines counts');
+      console.groupEnd();
+    }catch(e){ console.error('SelfTests failed', e); }
+  }
+
+  /* ---------- Events ---------- */
+  document.addEventListener('DOMContentLoaded', ()=>{
+    loadSettings();
+    btnHow.addEventListener('click', showHowTo);
+    btnSettings.addEventListener('click', showSettings);
+    btnParse.addEventListener('click', handleParse);
+    btnClearFilters.addEventListener('click', ()=>{ clearFilters(); renderTable(state.transactions); });
+
+    // ส่งออกอิงข้อมูลที่เห็นอยู่
+    btnExportCSV.addEventListener('click', ()=> exportCSV(getVisibleRows(), 'transactions.csv'));
+    btnExportXLSX.addEventListener('click', async ()=> await exportXLSX(getVisibleRows(), 'transactions.xlsx'));
+    btnExportXLSXByCat.addEventListener('click', async ()=> await exportXLSXByCategory(getVisibleRows(), 'transactions_by_category.xlsx'));
+
+    setTimeout(()=>{ if(!localStorage.getItem('pdfParserSeenTip')){ showHowTo(); localStorage.setItem('pdfParserSeenTip','1'); } }, 600);
+    runSelfTests();
+  });
+  </script>
+</body>
+</html>
